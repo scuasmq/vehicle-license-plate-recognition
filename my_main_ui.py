@@ -60,25 +60,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         try:
             self.file_dir_temp,_ = QFileDialog.getOpenFileName(self,"选择被检测的车辆","D:/")
             self.file_dir = self.file_dir_temp.replace("\\","/")
-            print(self.file_dir)
+            print('dir:',self.file_dir)
 
-            roi, label, color = CaridDetect(self.file_dir)
+            roi, label, color = CaridDetect(self.file_dir)  ##ROI是提取的车牌
             seg_dict, _, pre = Cardseg([roi],[color],None)
             print(pre)
 
             # segment
-            cv2.imwrite(os.path.join("./temp/seg_card.jpg"),roi)
-            seg_img = cv2.imread("./temp/seg_card.jpg")
+            cv2.imwrite(os.path.join("./temp/seg_card.jpg"),roi) ##写入本地
+            seg_img = cv2.imread("./temp/seg_card.jpg")  ##从本地读取
             seg_rows, seg_cols, seg_channels = seg_img.shape
             bytesPerLine = seg_channels * seg_cols
             cv2.cvtColor(seg_img, cv2.COLOR_BGR2RGB,seg_img)
             QImg = QImage(seg_img.data, seg_cols, seg_rows,bytesPerLine, QImage.Format_RGB888)
-            self.label_2.setPixmap(QPixmap.fromImage(QImg).scaled(self.label_2.size(), 
+            self.label_2.setPixmap(QPixmap.fromImage(QImg).scaled(self.label_2.size(),  ##设置车牌的显示
                 Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
             # reg result
             pre.insert(2,"·")
-            self.label_3.setText(" "+"".join(pre))
+            self.label_3.setText(" "+"".join(pre))  ##显示预测的车牌
 
             # clor view
             if color == "yello":
@@ -91,10 +91,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.label_4.setText("未识别出车牌颜色")
 
 
-            frame = cv2.imread(self.file_dir)
+            frame = cv2.imread(self.file_dir)  ## 加载的图片
             # cv2.rectangle(frame, (label[0],label[2]), (label[1],label[3]), (0,0,255), 2)
             font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(frame, 'https://github.com/DataXujing/vehicle-license-plate-recognition', (10, 10), font, 0.3, (0, 0, 255), 1)
+            cv2.putText(frame, 'https://github.com/DataXujing/vehicle-license-plate-recognition', (10, 10), font, 0.3, (0, 0, 255), 1) ## 这句话要删除！！
             img_rows, img_cols, channels = frame.shape
             bytesPerLine = channels * img_cols
             cv2.cvtColor(frame, cv2.COLOR_BGR2RGB,frame)

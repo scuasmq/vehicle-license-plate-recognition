@@ -18,11 +18,11 @@ import qtawesome
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
-        MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(906, 600)
+        MainWindow.setObjectName("MainWindow") ## 设置对象吗名
+        MainWindow.resize(906, 600)  ##窗口大小
         icon = QtGui.QIcon()
         icon.addPixmap(QtGui.QPixmap(":/pic/pic/logo.ico"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
-        MainWindow.setWindowIcon(icon)
+        MainWindow.setWindowIcon(icon) ##设置图标
 
         # 将按钮边框去掉，文字设置为白色，背景灰色
         qss1 = '''
@@ -171,22 +171,26 @@ class Ui_MainWindow(object):
         '''
         MainWindow.setStyleSheet(qss2)
 
-        MainWindow.setWindowFlag(QtCore.Qt.FramelessWindowHint) # 隐藏边框
+        MainWindow.setWindowFlag(QtCore.Qt.FramelessWindowHint) # 隐藏边框栏（最上面那个）
         MainWindow.setWindowOpacity(0.95) # 设置窗口透明度
 
-        self.centralWidget = QtWidgets.QWidget(MainWindow)
+        self.centralWidget = QtWidgets.QWidget(MainWindow) ## 窗口上的控件
         self.centralWidget.setObjectName("centralWidget")
-        self.centralWidget.setStyleSheet(qss3)
+        # self.centralWidget.setStyleSheet(qss3)
         self.label = QtWidgets.QLabel(self.centralWidget)
         self.label.setGeometry(QtCore.QRect(30, 50, 611, 501))
         self.label.setText("")
         self.label.setObjectName("label")
+
+        ## 最小化的button
         self.pushButton = QtWidgets.QPushButton(self.centralWidget)
         self.pushButton.setGeometry(QtCore.QRect(720, 20, 75, 23))
         self.pushButton.setObjectName("pushButton")
         QToolTip.setFont(QFont("SansSerif",6))
         self.pushButton.setToolTip("<b>最小化</b>")
         self.pushButton.setStyleSheet('''QPushButton{background:#F76677;border-radius:5px;}QPushButton:hover{background:red;}''')
+
+        ## 退出的button
         self.pushButton_2 = QtWidgets.QPushButton(self.centralWidget)
         self.pushButton_2.setGeometry(QtCore.QRect(810, 20, 75, 23))
         self.pushButton_2.setObjectName("pushButton_2")
@@ -194,6 +198,8 @@ class Ui_MainWindow(object):
         self.pushButton_2.setStyleSheet('''QPushButton{background:#6DDF6D;border-radius:5px;}QPushButton:hover{background:green;}''')
         self.pushButton_3 = QtWidgets.QPushButton(self.centralWidget)
         self.pushButton_3.setGeometry(QtCore.QRect(690, 90, 191, 23))
+
+        ## "车牌检测"旁边的剪刀
         icon1 = QtGui.QIcon()
         icon1.addPixmap(QtGui.QPixmap(":/pic/pic/cut.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.pushButton_3.setIcon(icon1)

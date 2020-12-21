@@ -7,7 +7,7 @@ from numpy.linalg import norm
 import sys
 import os
 import json
-
+import copy
 SZ = 20          # 训练图片长宽
 MAX_WIDTH = 1000 # 原始图片最大宽度
 Min_Area = 2000  # 车牌区域允许最大面积
@@ -20,7 +20,7 @@ def point_limit(point):
 	if point[1] < 0:
 		point[1] = 0
 
-def accurate_place(card_img_hsv, limit1, limit2, color,cfg):
+def accurate_place(card_img_hsv, limit1, limit2, color,cfg):  ## 进一步判定车牌区域，超过像素的limit就判定这个区域是车牌
 	row_num, col_num = card_img_hsv.shape[:2]
 	xl = col_num
 	xr = 0
@@ -28,7 +28,7 @@ def accurate_place(card_img_hsv, limit1, limit2, color,cfg):
 	yl = row_num
 	#col_num_limit = cfg["col_num_limit"]
 	row_num_limit = cfg["row_num_limit"]
-	col_num_limit = col_num * 0.8 if color != "green" else col_num * 0.5 # 绿色有渐变
+	col_num_limit = col_num * 0.8 if color != "green" else col_num * 0.5 # 绿色有渐变  ##所以判定得比较宽松
 	for i in range(row_num):
 		count = 0
 		for j in range(col_num):
@@ -84,35 +84,63 @@ def CaridDetect(car_pic):
 		img = cv2.GaussianBlur(img, (blur, blur), 0) #图片分辨率调整
 	oldimg = img
 	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	# cv2.imshow('img_b', img)
+	# cv2.waitKey(0)
+	# cv2.destroyAllWindows()
 	#equ = cv2.equalizeHist(img)
 	#img = np.hstack((img, equ))
 	# 去掉图像中不会是车牌的区域
+	## 核，全1
 	kernel = np.ones((20, 20), np.uint8)
 	# morphologyEx 形态学变化函数
-	img_opening = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
-	img_opening = cv2.addWeighted(img, 1, img_opening, -1, 0);
+	img_opening = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel) ## 开运算，先腐蚀后膨胀 去噪声，小的偏白色孔洞或者区域用周围的颜色进行填补，整体的图像也会模糊化
+	# cv2.imshow('img_opening', img_opening)
+	# cv2.waitKey(0)
+	# cv2.destroyAllWindows()
+	img_opening = cv2.addWeighted(img, 1, img_opening, -1, 0) ##参数是权重 图片融合，作用是原图减去腐蚀、膨胀后的图 去除细节
+	# cv2.imshow('img_addWeighted', img_opening)
+	# cv2.waitKey(0)
+	# cv2.destroyAllWindows()
 
 	# 找到图像边缘 Canny边缘检测
+	##二值化 (src,threshold(起始值),maxval(最大值),type)
+	## cv2.THRESH_OTSU 自动产生一个阈值
 	ret, img_thresh = cv2.threshold(img_opening, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-	img_edge = cv2.Canny(img_thresh, 100, 200)
+	# cv2.imshow('img_thresh', img_thresh)
+	# cv2.waitKey(0)
+	# cv2.destroyAllWindows()
+
+	img_edge = cv2.Canny(img_thresh, 100, 200) ## 最小阈值，最大阈值 当minval和maxval越小时，所保留的边缘信息更多,较大的maxval用于检测图像中明显的边缘
+	# cv2.imshow('img_edge', img_edge)
+	# cv2.waitKey(0)
+	# cv2.destroyAllWindows()
+
 	# 使用开运算和闭运算让图像边缘成为一个整体
 	kernel = np.ones((cfg["morphologyr"], cfg["morphologyc"]), np.uint8)
-	img_edge1 = cv2.morphologyEx(img_edge, cv2.MORPH_CLOSE, kernel)
-	img_edge2 = cv2.morphologyEx(img_edge1, cv2.MORPH_OPEN, kernel)
+	img_edge1 = cv2.morphologyEx(img_edge, cv2.MORPH_CLOSE, kernel) ## 先腐蚀后膨胀 填充前景物体中的小洞，或者抹去前景物体上的小黑点
+	# cv2.imshow('img_edge1', img_edge1)
+	# cv2.waitKey(0)
+	# cv2.destroyAllWindows()
+	img_edge2 = cv2.morphologyEx(img_edge1, cv2.MORPH_OPEN, kernel)  #先膨胀后腐蚀 白色的孔洞填补
+	# cv2.imshow('img_edge2', img_edge2)
+	# cv2.waitKey(0)
+	# cv2.destroyAllWindows()
 
 	# 查找图像边缘整体形成的矩形区域，可能有很多，车牌就在其中一个矩形区域中
 	# cv2.findContours()函数来查找检测物体的轮廓
 	try:
 		contours, hierarchy = cv2.findContours(img_edge2, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-	except ValueError:
+	except ValueError: ## try except主要是为了兼容性
 		image, contours, hierarchy = cv2.findContours(img_edge2, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+	## contours:轮廓  cv2.CHAIN_APPROX_SIMPLE:压缩水平方向，垂直方向，对角线方向的元素，只保留该方向的终点坐标，例如一个矩形轮廓只需4个点来保存轮廓信息
 	contours = [cnt for cnt in contours if cv2.contourArea(cnt) > Min_Area]
-	# print('[ INFO ] len(contours): {}'.format(len(contours)))
-	
+	## 得到面积大于Min_Area 的轮廓
+
+
 	# 一一排除不是车牌的矩形区域，找到最小外接矩形的长宽比复合车牌条件的边缘检测到的物体
 	car_contours = []
 	for cnt in contours:
-		rect = cv2.minAreaRect(cnt) 
+		label = cv2.minAreaRect(cnt) 
 		# 生成最小外接矩形，点集 cnt 存放的就是该四边形的4个顶点坐标（点集里面有4个点）
 		# 函数 cv2.minAreaRect() 返回一个Box2D结构rect：（最小外接矩形的中心（x，y），（宽度，高度），旋转角度），
 		# 但是要绘制这个矩形，我们需要矩形的4个顶点坐标box, 通过函数 cv2.boxPoints() 获得，
@@ -121,19 +149,19 @@ def CaridDetect(car_pic):
 		# 得到的最小外接矩形的4个顶点顺序、中心坐标、宽度、高度、旋转角度（是度数形式，不是弧度数）
 		# https://blog.csdn.net/lanyuelvyun/article/details/76614872
 
-		area_width, area_height = rect[1]
+		area_width, area_height = label[1]
 		if area_width < area_height:
 			area_width, area_height = area_height, area_width
-		wh_ratio = area_width / area_height
-		#print(wh_ratio)
+		wh_ratio = area_width / area_height ## 宽高比
+
 		# 要求矩形区域长宽比在2到5.5之间，2到5.5是车牌的长宽比，其余的矩形排除 一般的比例是3.5
 		if wh_ratio > 2 and wh_ratio < 5.5:
-			car_contours.append(rect)
-			box = cv2.boxPoints(rect)
+			car_contours.append(label)
+			box = cv2.boxPoints(label) ## 这两句好像没什么用
 			box = np.int0(box)
 			#oldimg = cv2.drawContours(oldimg, [box], 0, (0, 0, 255), 2)
 			#cv2.imshow("edge4", oldimg)
-			#print(rect)
+			#print(label)
 
 	# print("[ INFo ] len(car_contours): {}".format(len(car_contours)))
 	# print("[ INFO ] 精确定位.")
@@ -142,16 +170,15 @@ def CaridDetect(car_pic):
 
 	# 矩形区域可能是倾斜的矩形，需要矫正，以便使用颜色定位
 	# 这个就是为什么我们不选择YOLO,SSD或其他的目标检测算法来检测车牌号的原因！！！（给自己偷懒找个台阶 :) )
-	for rect in car_contours:
-		if rect[2] > -1 and rect[2] < 1:#创造角度，使得左、高、右、低拿到正确的值
-			angle = 1
+	for label in car_contours:
+		if label[2] > -1 and label[2] < 1:#创造角度，使得左、高、右、低拿到正确的值
+			angle = 1 ## 旋转角度θ是水平轴（x轴）逆时针旋转，与碰到的矩形的第一条边的夹角 坐标系原点在左上角，相对于x轴，逆时针旋转角度为负，顺时针旋转角度为正
 		else:
-			angle = rect[2]
-		rect = (rect[0], (rect[1][0]+5, rect[1][1]+5), angle)#扩大rect范围，避免车牌边缘被排除 
+			angle = label[2]
+		label = (label[0], (label[1][0]+5, label[1][1]+5), angle)#扩大rect范围，避免车牌边缘被排除 
 
-		box = cv2.boxPoints(rect)
-		# 避免边界超出图像边界
-		heigth_point = right_point = [0, 0]
+		box = cv2.boxPoints(label)
+		heigth_point = right_point = [0, 0] # 避免边界超出图像边界
 		left_point = low_point = [pic_width, pic_hight]
 		for point in box:
 			if left_point[0] > point[0]:
@@ -172,10 +199,11 @@ def CaridDetect(car_pic):
 			point_limit(new_right_point)
 			point_limit(heigth_point)
 			point_limit(left_point)
-			card_img = dst[int(left_point[1]):int(heigth_point[1]), int(left_point[0]):int(new_right_point[0])]
+			card_img = dst[int(left_point[1]):int(heigth_point[1]), int(left_point[0]):int(new_right_point[0])] ##裁剪图片
 			card_imgs.append(card_img)
-			#cv2.imshow("card", card_img)
-			#cv2.waitKey(0)
+			# cv2.imshow("card", card_img)
+			# cv2.waitKey(0)
+			# cv2.destroyAllWindows()
 		elif left_point[1] > right_point[1]: # 负角度
 			
 			new_left_point = [left_point[0], heigth_point[1]]
@@ -188,8 +216,9 @@ def CaridDetect(car_pic):
 			point_limit(new_left_point)
 			card_img = dst[int(right_point[1]):int(heigth_point[1]), int(new_left_point[0]):int(right_point[0])]
 			card_imgs.append(card_img)
-			#cv2.imshow("card", card_img)
-			#cv2.waitKey(0)
+			# cv2.imshow("card", card_img)
+			# cv2.waitKey(0)
+			# cv2.destroyAllWindows()
 
 	# 开始使用颜色定位，排除不是车牌的矩形，目前只识别蓝、绿、黄车牌
 
@@ -200,13 +229,13 @@ def CaridDetect(car_pic):
 		#有转换失败的可能，原因来自于上面矫正矩形出错
 		if card_img_hsv is None:
 			continue
-		row_num, col_num= card_img_hsv.shape[:2]
-		card_img_count = row_num * col_num
+		row_num, col_num= card_img_hsv.shape[:2] ## r,c hsv
+		card_img_count = row_num * col_num ## 面积
 
 		for i in range(row_num):
 			for j in range(col_num):
-				H = card_img_hsv.item(i, j, 0)
-				S = card_img_hsv.item(i, j, 1)
+				H = card_img_hsv.item(i, j, 0) ## 红色为0°，绿色为120°,蓝色为240°
+				S = card_img_hsv.item(i, j, 1) ## 饱和度
 				V = card_img_hsv.item(i, j, 2)
 				if 11 < H <= 34 and S > 34:#图片分辨率调整
 					yello += 1
@@ -215,7 +244,7 @@ def CaridDetect(car_pic):
 				elif 99 < H <= 124 and S > 34:#图片分辨率调整
 					blue += 1
 				
-				if 0 < H <180 and 0 < S < 255 and 0 < V < 46:
+				if 0 < H <180 and 0 < S < 255 and 0 < V < 46: ## 亮度
 					black += 1
 				elif 0 < H <180 and 0 < S < 43 and 221 < V < 225:
 					white += 1
@@ -223,7 +252,7 @@ def CaridDetect(car_pic):
 
 		limit1 = limit2 = 0
 		if yello*2 >= card_img_count:
-			color = "yello"
+			color = "yello" ##H 范围
 			limit1 = 11
 			limit2 = 34#有的图片有色偏偏绿
 		elif green*2 >= card_img_count:
@@ -241,13 +270,13 @@ def CaridDetect(car_pic):
 		# print(blue, green, yello, black, white, card_img_count)
 		#cv2.imshow("color", card_img)
 		#cv2.waitKey(0)
-		if limit1 == 0:
+		if limit1 == 0: ## 不符合颜色，没有加入判断list
 			continue
 		#以上为确定车牌颜色
 
 		#以下为根据车牌颜色再定位，缩小边缘非车牌边界
 		xl, xr, yh, yl = accurate_place(card_img_hsv, limit1, limit2, color,cfg)
-		if yl == yh and xl == xr:
+		if yl == yh and xl == xr: ## 完全不匹配，跳过
 			continue
 		need_accurate = False
 		if yl >= yh:
@@ -259,7 +288,7 @@ def CaridDetect(car_pic):
 			xr = col_num
 			need_accurate = True
 		card_imgs[card_index] = card_img[yl:yh, xl:xr] if color != "green" or yl < (yh-yl)//4 else card_img[yl-(yh-yl)//4:yh, xl:xr]
-		if need_accurate:#可能x或y方向未缩小，需要再试一次
+		if need_accurate:#可能x或y方向未缩小，需要再试一次  ##其实没啥用 card_img都没有等于它
 			card_img = card_imgs[card_index]
 			card_img_hsv = cv2.cvtColor(card_img, cv2.COLOR_BGR2HSV)
 			xl, xr, yh, yl = accurate_place(card_img_hsv, limit1, limit2, color,cfg)
@@ -278,17 +307,23 @@ def CaridDetect(car_pic):
 		card_color = color
 		labels = (int(right_point[1]), int(heigth_point[1]), int(left_point[0]), int(right_point[0]))
 
-			
+
 	return roi,labels, card_color#定位的车牌图像、车牌颜色
 
 if __name__ == '__main__':
 	for pic_file in os.listdir("./test_img"):
-
+		print(os.path.join("./test_img", pic_file))
 		roi, label,color = CaridDetect(os.path.join("./test_img",pic_file))
 		cv2.imwrite(os.path.join("./result",pic_file),roi)
 		print("*"*50)
 		print("[ ROI ] {}".format(roi))
 		print("[ Color ] {}".format(color))
 		print("[ Label ] {}".format(label))
-
-	
+		# print(os.path.join("./test_img", pic_file))
+		# img = cv2.imread(os.path.join("./test_img", pic_file))
+		# cv2.imshow('img', img)
+		# cv2.waitKey(0)
+		# cv2.destroyAllWindows()
+		cv2.imshow("roi", roi)
+		cv2.waitKey(0)
+		cv2.destroyAllWindows()
